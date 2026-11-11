@@ -34,8 +34,9 @@ function Shelfie:init()
     self:onDispatcherRegisterActions()
     self.ui.menu:registerToMainMenu(self)
 
-    -- Only in the file manager (not while reading).
-    if self.ui.file_chooser and self.settings.show_on_start then
+    -- Only in the file manager (not while reading). Note: plugins are created
+    -- before the file manager builds its file_chooser, so test for a document.
+    if not self.ui.document and self.settings.show_on_start then
         UIManager:nextTick(function() self:showHome() end)
     end
 end
@@ -74,13 +75,15 @@ function Shelfie:showHome()
     end
     self.home = home
     UIManager:show(home)
+    logger.info("Shelfie: home screen shown")
 
     -- Developer hook (desktop emulator only): SHELFIE_DEV_SHOT=/path/shot.png
     -- saves a screenshot a few seconds after the home screen appears, then quits.
     local shot = os.getenv("SHELFIE_DEV_SHOT")
     if shot and shot ~= "" then
         UIManager:scheduleIn(tonumber(os.getenv("SHELFIE_DEV_DELAY")) or 4, function()
-            require("device").screen:shot(shot)
+            local ok, err = pcall(function() require("device").screen:shot(shot) end)
+            logger.info("Shelfie: dev screenshot", ok and "saved to" or "FAILED:", ok and shot or err)
             UIManager:quit()
         end)
     end
