@@ -2,7 +2,7 @@
 
 A cheerful reading-dashboard home screen for [KOReader](https://github.com/koreader/koreader), designed for black-and-white e-ink.
 
-> **Status: early work in progress (v0.2.0).** Tested in the desktop emulator; device testing in progress. Expect rough edges.
+> **Status: early work in progress (v0.2.1).** Tested in the desktop emulator; device testing in progress. Expect rough edges.
 
 ```
 ┌──────────────────────────────────────┐

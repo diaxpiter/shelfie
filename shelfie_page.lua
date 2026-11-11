@@ -105,14 +105,14 @@ function Page:row(width, label, right, callback, sub)
         W.text(sub, W.FONT_SANS, 12, { color = W.MUTED, max_width = width - right:getSize().w - px(12) }),
     } or W.text(label, W.FONT_SANS_BOLD, 15, { max_width = width - right:getSize().w - px(12) })
     local row = column(width, "left", {
-        vspan(10),
+        vspan(7),
         HorizontalGroup:new{
             align = "center",
             left,
             HorizontalSpan:new{ width = math.max(0, width - left:getSize().w - right:getSize().w) },
             right,
         },
-        vspan(10),
+        vspan(7),
     })
     return callback and W.Tappable:new{ callback = callback, row } or row
 end
