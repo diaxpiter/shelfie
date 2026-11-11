@@ -52,15 +52,52 @@ function Shelfie:init()
         W.fonts_ready = true
     end
 
+    if not self.ui.document and self.settings.show_on_start then
+        self:takeOverHome()
+    end
+
     -- Only in the file manager (not while reading). Note: plugins are created
     -- before the file manager builds its file_chooser, so test for a document.
     if not self.ui.document and self.settings.show_on_start then
         UIManager:nextTick(function()
             -- SHELFIE_DEV_SCREEN (desktop emulator only) opens another page first.
             local dev = os.getenv("SHELFIE_DEV_SCREEN")
-            self:showScreen(SCREENS[dev or ""] and dev or "home")
+            if dev == "home-button" then
+                -- Simulate: Folders, then KOReader's own Home button.
+                self:showFolders()
+                self.ui:onHome()
+            else
+                self:showScreen(SCREENS[dev or ""] and dev or "home")
+            end
             self:devScreenshot()
         end)
+    end
+end
+
+--- Make Shelfie *the* home page of the file manager:
+-- * KOReader's Home (title-bar house icon, Home gesture/key) opens Shelfie;
+-- * a "start with" left behind by another home-screen plugin that isn't
+--   running (e.g. "homescreen_simpleui") falls back to the file manager,
+--   which is where Shelfie appears.
+function Shelfie:takeOverHome()
+    local fm = self.ui
+    local plugin = self
+    local original = fm.onHome
+    fm.onHome = function(this, ...)
+        if plugin.settings.show_on_start then
+            plugin:showHome()
+            return true
+        end
+        return original(this, ...)
+    end
+
+    local start_with = G_reader_settings:readSetting("start_with")
+    if type(start_with) == "string" and start_with:match("^homescreen_") then
+        local owner = start_with:gsub("^homescreen_", "")
+        if not fm[owner] then
+            logger.info("Shelfie: resetting stale start_with", start_with)
+            G_reader_settings:saveSetting("start_with", "filemanager")
+        end
     end
 end
 
