@@ -27,6 +27,7 @@ local DEFAULTS = {
     show_on_start = true,
     daily_goal = 30,
     library_filter = "all",
+    hide_dictionaries = true,
 }
 
 local SCREENS = {
@@ -42,6 +43,10 @@ function Shelfie:init()
     for k, v in pairs(DEFAULTS) do
         if self.settings[k] == nil then self.settings[k] = v end
     end
+    self.settings.hidden = self.settings.hidden or {}
+    local Data = require("shelfie_data")
+    Data.options.hidden = self.settings.hidden
+    Data.options.hide_dictionaries = self.settings.hide_dictionaries
     self:onDispatcherRegisterActions()
     self.ui.menu:registerToMainMenu(self)
 
@@ -180,6 +185,59 @@ end
 
 function Shelfie:showBookInfo(file)
     if self.ui.bookinfo then self.ui.bookinfo:show(file) end
+end
+
+--- Long-press menu for a book cover: info, or hide it from Shelfie.
+function Shelfie:bookActions(file, title)
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local dialog
+    dialog = ButtonDialog:new{
+        title = title,
+        title_align = "center",
+        buttons = {
+            {
+                {
+                    text = _("Book info"),
+                    callback = function()
+                        UIManager:close(dialog)
+                        self:showBookInfo(file)
+                    end,
+                },
+                {
+                    text = _("Hide from Shelfie"),
+                    callback = function()
+                        UIManager:close(dialog)
+                        self:hideBook(file)
+                    end,
+                },
+            },
+        },
+    }
+    UIManager:show(dialog)
+end
+
+function Shelfie:hideBook(file)
+    self.settings.hidden[file] = true
+    self:saveSettings()
+    if self.screen then self.screen:refresh() end
+end
+
+function Shelfie:hiddenCount()
+    local n = 0
+    for _ in pairs(self.settings.hidden) do n = n + 1 end
+    return n
+end
+
+function Shelfie:unhideAll()
+    for k in pairs(self.settings.hidden) do self.settings.hidden[k] = nil end
+    self:saveSettings()
+    if self.screen then self.screen:refresh() end
+end
+
+function Shelfie:toggleHideDictionaries()
+    self.settings.hide_dictionaries = not self.settings.hide_dictionaries
+    require("shelfie_data").options.hide_dictionaries = self.settings.hide_dictionaries
+    self:saveSettings()
 end
 
 --- KOReader's calendar view of reading statistics.

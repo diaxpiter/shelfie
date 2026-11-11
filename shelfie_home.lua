@@ -266,6 +266,7 @@ function Home:build()
                 if i > first then table.insert(row, HorizontalSpan:new{ width = col_gap }) end
                 table.insert(row, W.Tappable:new{
                     callback = function() plugin:openBook(book.file) end,
+                    hold_callback = function() plugin:bookActions(book.file, book.title) end,
                     W.cover(book, best.bw, best.bh, i),
                 })
                 shown = i

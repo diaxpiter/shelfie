@@ -85,7 +85,7 @@ end
 function Data.currentBook()
     ReadHistory:reload()
     for _, item in ipairs(ReadHistory.hist) do
-        if item.file and lfs.attributes(item.file, "mode") == "file" then
+        if item.file and lfs.attributes(item.file, "mode") == "file" and Data.isListed(item.file) then
             local meta = Data.bookMeta(item.file, true)
             if meta.status ~= "complete" then
                 return meta
@@ -173,6 +173,36 @@ function Data.finishedThisYear()
     return count
 end
 
+-- What to leave out of Shelfie's lists. Set by the plugin from its settings.
+Data.options = {
+    hidden = {},              -- [path] = true: hidden by the user
+    hide_dictionaries = true, -- skip dictionary files (they're not books)
+}
+
+-- Words for "dictionary" in file names (lower case, plain ASCII prefixes).
+local DICT_WORDS = {
+    "dicion", "dictionar", "dictionnaire", "diccionar", "dizionar",
+    "wörterbuch", "worterbuch", "woordenboek", "slovník", "słownik",
+}
+
+--- Is this file a dictionary rather than a book (by name or folder)?
+function Data.isDictionary(path)
+    local lower = path:lower()
+    if lower:find("/dictionaries/", 1, true) then return true end
+    local _, name = util.splitFilePathName(lower)
+    for _, word in ipairs(DICT_WORDS) do
+        if name:find(word, 1, true) then return true end
+    end
+    return false
+end
+
+--- Should Shelfie list this file?
+function Data.isListed(path)
+    if Data.options.hidden[path] then return false end
+    if Data.options.hide_dictionaries and Data.isDictionary(path) then return false end
+    return true
+end
+
 --- Every book file under the home folder (max depth 3), newest file first.
 -- Returns a list of { file = path, mtime = seconds }.
 function Data.scanBooks()
@@ -188,7 +218,7 @@ function Data.scanBooks()
                     scan(path, depth + 1)
                 elseif attr and attr.mode == "file"
                     and DocumentRegistry:hasProvider(path) and not name:match("%.sh$")
-                    and not name:match("%.txt$") then
+                    and not name:match("%.txt$") and Data.isListed(path) then
                     found[#found + 1] = { file = path, mtime = attr.modification }
                 end
             end

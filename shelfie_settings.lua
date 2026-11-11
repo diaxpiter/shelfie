@@ -39,23 +39,37 @@ function Settings:buildContent(content)
     local plugin = self.plugin
     local s = plugin.settings
 
-    table.insert(content, self:header(_("Settings")))
+    local meta = dofile(plugin.path .. "/_meta.lua")
+    table.insert(content, self:header(_("Settings"),
+        W.text("Shelfie " .. (meta.version or ""), W.FONT_SANS_BOLD, 12, { color = W.MUTED })))
     table.insert(content, vspan(14))
 
-    self:section(content, _("Shelfie"), {
+    local shelfie_rows = {
         function(w)
             return self:row(w, _("Daily reading goal"),
                 W.text(T(_("%1 min"), s.daily_goal) .. "  ›", W.FONT_SANS_BOLD, 14, { color = W.MUTED }),
-                function() plugin:editDailyGoal() end,
-                nil)
+                function() plugin:editDailyGoal() end)
         end,
         function(w)
             return self:row(w, _("Open Shelfie with the library"),
                 W.Switch:new{ on = s.show_on_start },
-                function() plugin:toggleShowOnStart(); self:refresh() end,
-                _("Off: start in KOReader's file browser"))
+                function() plugin:toggleShowOnStart(); self:refresh() end)
         end,
-    })
+        function(w)
+            return self:row(w, _("Hide dictionaries"),
+                W.Switch:new{ on = s.hide_dictionaries },
+                function() plugin:toggleHideDictionaries(); self:refresh() end)
+        end,
+    }
+    local hidden = plugin:hiddenCount()
+    if hidden > 0 then
+        table.insert(shelfie_rows, function(w)
+            return self:row(w, T(_("Hidden books: %1"), hidden),
+                W.text(_("Show all") .. "  ›", W.FONT_SANS_BOLD, 14, { color = W.MUTED }),
+                function() plugin:unhideAll() end)
+        end)
+    end
+    self:section(content, _("Shelfie"), shelfie_rows)
 
     -- Reading & device: dictionaries, frontlight, Wi-Fi (in one card to fit the screen).
     local device_rows = {}
@@ -103,10 +117,6 @@ function Settings:buildContent(content)
         end,
     })
 
-    local meta = dofile(plugin.path .. "/_meta.lua")
-    table.insert(content, W.text(
-        T(_("Shelfie %1 · github.com/diaxpiter/shelfie"), meta.version or ""),
-        W.FONT_SANS, 11, { color = W.MUTED }))
 end
 
 return Settings

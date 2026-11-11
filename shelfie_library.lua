@@ -197,7 +197,7 @@ function Library:build()
                 end
                 table.insert(row, W.Tappable:new{
                     callback = function() plugin:openBook(book.file) end,
-                    hold_callback = function() plugin:showBookInfo(book.file) end,
+                    hold_callback = function() plugin:bookActions(book.file, book.title) end,
                     column(bw, "left", {
                         W.cover(book, bw, bh, i),
                         vspan(6),

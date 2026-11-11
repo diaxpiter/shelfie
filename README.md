@@ -2,7 +2,7 @@
 
 A cheerful reading-dashboard home screen for [KOReader](https://github.com/koreader/koreader), designed for black-and-white e-ink.
 
-> **Status: early work in progress (v0.2.1).** Tested in the desktop emulator; device testing in progress. Expect rough edges.
+> **Status: early work in progress (v0.2.2).** Tested in the desktop emulator; device testing in progress. Expect rough edges.
 
 ```
 ┌──────────────────────────────────────┐
@@ -32,7 +32,8 @@ A cheerful reading-dashboard home screen for [KOReader](https://github.com/korea
 - **Library**: every book as a cover grid with title and progress. Filter by All / Reading / New / Finished, swipe or use the arrows to change pages, tap to read, long-press for book info. *Folders* opens KOReader's own file browser.
 - **Stats**: streak, this week, this month, a 7-day chart against your daily goal, and all-time numbers. *Calendar* opens KOReader's detailed view.
 - **Tags**: your collections as cards. Tap one to browse it in the library grid; *Manage* creates or renames collections.
-- **Settings**: daily goal, start-up behaviour, frontlight, Wi-Fi, and shortcuts to KOReader's full menu.
+- **Settings**: daily goal, start-up behaviour, dictionaries, frontlight, Wi-Fi, and shortcuts to KOReader's full menu.
+- **Hiding**: dictionary files (e.g. Amazon *Dicionário…*, anything in a `dictionaries` folder) are hidden automatically; long-press any cover → *Hide from Shelfie* for others. Bring them back in Settings.
 - **Tab bar** on every page: Home · Library · Stats · Tags · Settings.
 
 Shelfie only reads your data. It never changes books, history or statistics.
