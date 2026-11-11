@@ -2,7 +2,7 @@
 
 A cheerful reading-dashboard home screen for [KOReader](https://github.com/koreader/koreader), designed for black-and-white e-ink.
 
-> **Status: early work in progress (v0.2.2).** Tested in the desktop emulator; device testing in progress. Expect rough edges.
+> **Status: early work in progress (v0.3.0).** Tested in the desktop emulator; device testing in progress. Expect rough edges.
 
 ```
 ┌──────────────────────────────────────┐
@@ -33,6 +33,7 @@ A cheerful reading-dashboard home screen for [KOReader](https://github.com/korea
 - **Stats**: streak, this week, this month, a 7-day chart against your daily goal, and all-time numbers. *Calendar* opens KOReader's detailed view.
 - **Tags**: your collections as cards. Tap one to browse it in the library grid; *Manage* creates or renames collections.
 - **Settings**: daily goal, start-up behaviour, dictionaries, frontlight, Wi-Fi, and shortcuts to KOReader's full menu.
+- **Sleep screen**: a calm white-on-black page with the book you're reading, its progress, one of your highlights from it and your streak, replacing KOReader's sleep screen (and its "Sleeping" banner). Switch in Settings.
 - **Hiding**: dictionary files (e.g. Amazon *Dicionário…*, anything in a `dictionaries` folder) are hidden automatically; long-press any cover → *Hide from Shelfie* for others. Bring them back in Settings.
 - **Tab bar** on every page: Home · Library · Stats · Tags · Settings.
 

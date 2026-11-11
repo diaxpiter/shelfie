@@ -56,6 +56,11 @@ function Settings:buildContent(content)
                 function() plugin:toggleShowOnStart(); self:refresh() end)
         end,
         function(w)
+            return self:row(w, _("Shelfie sleep screen"),
+                W.Switch:new{ on = s.sleep_screen ~= false },
+                function() plugin:toggleSleepScreen(); self:refresh() end)
+        end,
+        function(w)
             return self:row(w, _("Hide dictionaries"),
                 W.Switch:new{ on = s.hide_dictionaries },
                 function() plugin:toggleHideDictionaries(); self:refresh() end)
@@ -77,10 +82,6 @@ function Settings:buildContent(content)
         table.insert(device_rows, function(w)
             return self:row(w, _("Dictionaries"), chevron(),
                 function() plugin.ui.dictionary:showDictionariesMenu() end)
-        end)
-        table.insert(device_rows, function(w)
-            return self:row(w, _("Look up a word"), chevron(),
-                function() plugin.ui.dictionary:onShowDictionaryLookup() end)
         end)
     end
     local dev_preview = os.getenv("SHELFIE_DEV_SHOT") ~= nil -- emulator: preview device rows

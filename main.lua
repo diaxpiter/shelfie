@@ -28,6 +28,7 @@ local DEFAULTS = {
     daily_goal = 30,
     library_filter = "all",
     hide_dictionaries = true,
+    sleep_screen = true,
 }
 
 local SCREENS = {
@@ -57,6 +58,9 @@ function Shelfie:init()
         W.fonts_ready = true
     end
 
+    -- Shelfie's sleep screen (works while reading and in the library).
+    pcall(function() require("shelfie_sleep").install(self.path) end)
+
     if not self.ui.document and self.settings.show_on_start then
         self:takeOverHome()
     end
@@ -67,7 +71,12 @@ function Shelfie:init()
         UIManager:nextTick(function()
             -- SHELFIE_DEV_SCREEN (desktop emulator only) opens another page first.
             local dev = os.getenv("SHELFIE_DEV_SCREEN")
-            if dev == "home-button" then
+            if dev == "sleep" then
+                -- Simulate going to sleep: KOReader's screensaver with Shelfie's hook.
+                local Screensaver = require("ui/screensaver")
+                Screensaver:setup()
+                Screensaver:show()
+            elseif dev == "home-button" then
                 -- Simulate: Folders, then KOReader's own Home button.
                 self:showFolders()
                 self.ui:onHome()
@@ -232,6 +241,11 @@ function Shelfie:unhideAll()
     for k in pairs(self.settings.hidden) do self.settings.hidden[k] = nil end
     self:saveSettings()
     if self.screen then self.screen:refresh() end
+end
+
+function Shelfie:toggleSleepScreen()
+    self.settings.sleep_screen = not self.settings.sleep_screen
+    self:saveSettings()
 end
 
 function Shelfie:toggleHideDictionaries()
