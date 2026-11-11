@@ -79,7 +79,7 @@ function Home:build()
     local finished = Data.finishedThisYear()
     local recent = Data.recentlyAdded(12, current and current.file)
     -- The tab bar is built first: its height decides how many cover rows fit.
-    self[2] = self:buildNav()
+    self[2] = self:buildNav("home")
     self.current = current
 
     local content = VerticalGroup:new{ align = "left" }
@@ -289,11 +289,12 @@ function Home:build()
     self[1] = HorizontalGroup:new{ HorizontalSpan:new{ width = margin }, content }
 end
 
-function Home:buildNav()
+-- Shared by every Shelfie screen (Home, Library): `self` needs .plugin and .dimen.
+function Home:buildNav(active_tab)
     local plugin = self.plugin
     local sw = self.dimen.w
     local tabs = {
-        { "home", _("Home"), function() self:refresh() end, true },
+        { "home", _("Home"), function() plugin:showHome() end },
         { "library", _("Library"), function() plugin:showLibrary() end },
         { "stats", _("Stats"), function() plugin:showStats() end },
         { "tags", _("Tags"), function() plugin:showCollections() end },
@@ -303,7 +304,7 @@ function Home:buildNav()
     local tab_w = math.floor((sw - 2 * side) / #tabs)
     local row = HorizontalGroup:new{ HorizontalSpan:new{ width = side } }
     for _, t in ipairs(tabs) do
-        local active = t[4]
+        local active = t[1] == (active_tab or "home")
         local fg = active and W.WHITE or W.BLACK
         local inner = column(tab_w - 2 * px(4), "center", {
             vspan(6),
@@ -378,12 +379,17 @@ function Home:onCloseWidget()
     self._shown = false
     if self[1] then self[1]:free() end
     if self[2] then self[2]:free() end
-    if self.plugin then self.plugin.home = nil end
+    if self.plugin and self.plugin.screen == self then self.plugin.screen = nil end
 end
 
 function Home:onClose()
     UIManager:close(self)
     return true
 end
+
+-- Layout helpers shared with the Library screen.
+Home.column = column
+Home.vspan = vspan
+Home.hspan = hspan
 
 return Home

@@ -1,8 +1,10 @@
 --[[--
 Shelfie: a cheerful reading-dashboard home screen for KOReader.
 
-Shows on top of the file manager whenever it opens (at startup and after
-closing a book). "Library" simply reveals the normal file browser below.
+Shelfie draws its own full-screen pages on top of KOReader's file manager:
+Home, Library, Stats, Tags and Settings, switched with a bottom tab bar.
+It appears whenever the file manager opens (at startup and after closing
+a book). "Folders" reveals KOReader's own file browser underneath.
 
 @module koplugin.Shelfie
 --]]
@@ -18,12 +20,21 @@ local _ = require("gettext")
 local Shelfie = WidgetContainer:extend{
     name = "shelfie",
     is_doc_only = false,
-    home = nil,
+    screen = nil, -- the Shelfie page currently shown, if any
 }
 
 local DEFAULTS = {
     show_on_start = true,
     daily_goal = 30,
+    library_filter = "all",
+}
+
+local SCREENS = {
+    home = "shelfie_home",
+    library = "shelfie_library",
+    stats = "shelfie_stats",
+    tags = "shelfie_tags",
+    settings = "shelfie_settings",
 }
 
 function Shelfie:init()
@@ -34,10 +45,22 @@ function Shelfie:init()
     self:onDispatcherRegisterActions()
     self.ui.menu:registerToMainMenu(self)
 
+    -- Load Shelfie's bundled fonts once, for every page.
+    local W = require("shelfie_widgets")
+    if not W.fonts_ready then
+        pcall(W.setupFonts, self.path)
+        W.fonts_ready = true
+    end
+
     -- Only in the file manager (not while reading). Note: plugins are created
     -- before the file manager builds its file_chooser, so test for a document.
     if not self.ui.document and self.settings.show_on_start then
-        UIManager:nextTick(function() self:showHome() end)
+        UIManager:nextTick(function()
+            -- SHELFIE_DEV_SCREEN (desktop emulator only) opens another page first.
+            local dev = os.getenv("SHELFIE_DEV_SCREEN")
+            self:showScreen(SCREENS[dev or ""] and dev or "home")
+            self:devScreenshot()
+        end)
     end
 end
 
@@ -55,65 +78,75 @@ function Shelfie:getDailyGoal()
     return self.settings.daily_goal
 end
 
--- Actions -------------------------------------------------------------------
+-- Screens -------------------------------------------------------------------
 
-function Shelfie:showHome()
-    if self.home then
-        self.home:refresh()
+--- Show one of Shelfie's pages, replacing the current one.
+-- `args` are passed to the page (e.g. { collection = "favorites" } for Library).
+function Shelfie:showScreen(name, args)
+    if not self.ui.file_chooser then return end -- only in the file manager
+    local current = self.screen
+    if current and current.screen_name == name and not args then
+        current:refresh()
         return
     end
-    local ok, Home = pcall(require, "shelfie_home")
+    local ok, Page = pcall(require, SCREENS[name])
     if not ok then
-        logger.err("Shelfie: failed to load home screen:", Home)
+        logger.err("Shelfie: cannot load page", name, Page)
         return
     end
-    local ok2, home = pcall(Home.new, Home, { plugin = self })
+    local opts = { plugin = self, screen_name = name }
+    for k, v in pairs(args or {}) do opts[k] = v end
+    local ok2, page = pcall(Page.new, Page, opts)
     if not ok2 then
-        logger.err("Shelfie: failed to build home screen:", home)
-        UIManager:show(InfoMessage:new{ text = _("Shelfie could not draw the home screen. See crash.log for details.") })
+        logger.err("Shelfie: failed to build page", name, page)
+        UIManager:show(InfoMessage:new{ text = _("Shelfie could not draw this page. See crash.log for details.") })
         return
     end
-    self.home = home
-    UIManager:show(home)
-    logger.info("Shelfie: home screen shown")
+    self.screen = page
+    UIManager:show(page)
+    if current then UIManager:close(current) end
+    logger.info("Shelfie: showing", name)
+end
 
-    -- Developer hook (desktop emulator only): SHELFIE_DEV_SHOT=/path/shot.png
-    -- saves a screenshot a few seconds after the home screen appears, then quits.
-    local shot = os.getenv("SHELFIE_DEV_SHOT")
-    if shot and shot ~= "" then
-        UIManager:scheduleIn(tonumber(os.getenv("SHELFIE_DEV_DELAY")) or 4, function()
-            local ok, err = pcall(function() require("device").screen:shot(shot) end)
-            logger.info("Shelfie: dev screenshot", ok and "saved to" or "FAILED:", ok and shot or err)
-            UIManager:quit()
-        end)
+function Shelfie:closeScreen()
+    if self.screen then
+        local page = self.screen
+        self.screen = nil
+        UIManager:close(page)
     end
 end
 
+function Shelfie:showHome() self:showScreen("home") end
+function Shelfie:showLibrary(args) self:showScreen("library", args) end
+function Shelfie:showStats() self:showScreen("stats") end
+function Shelfie:showCollections() self:showScreen("tags") end
+function Shelfie:showSettings() self:showScreen("settings") end
+Shelfie.showMenu = Shelfie.showSettings -- the tab bar's "Settings"
+
 function Shelfie:onShowShelfie()
-    if self.ui.file_chooser then
-        self:showHome()
-    end
+    self:showHome()
     return true
 end
 
-function Shelfie:closeHome()
-    if self.home then
-        UIManager:close(self.home)
-        self.home = nil
-    end
-end
+-- Actions -------------------------------------------------------------------
 
 function Shelfie:openBook(file)
-    self:closeHome()
+    self:closeScreen()
     local ReaderUI = require("apps/reader/readerui")
     ReaderUI:showReader(file)
 end
 
-function Shelfie:showLibrary()
-    self:closeHome()
+--- KOReader's own file browser (folders, file operations).
+function Shelfie:showFolders()
+    self:closeScreen()
 end
 
-function Shelfie:showStats()
+function Shelfie:showBookInfo(file)
+    if self.ui.bookinfo then self.ui.bookinfo:show(file) end
+end
+
+--- KOReader's calendar view of reading statistics.
+function Shelfie:showCalendar()
     if self.ui.statistics and self.ui.statistics.onShowCalendarView then
         self.ui.statistics:onShowCalendarView()
     else
@@ -121,16 +154,9 @@ function Shelfie:showStats()
     end
 end
 
-function Shelfie:showCollections()
-    if self.ui.collections then
-        self.ui.collections:onShowCollList()
-    end
-end
-
-function Shelfie:showMenu()
-    if self.ui.menu then
-        self.ui.menu:onShowMenu()
-    end
+--- KOReader's full settings menu.
+function Shelfie:showKOReaderMenu()
+    if self.ui.menu then self.ui.menu:onShowMenu() end
 end
 
 function Shelfie:editDailyGoal()
@@ -144,9 +170,14 @@ function Shelfie:editDailyGoal()
         callback = function(spin)
             self.settings.daily_goal = spin.value
             self:saveSettings()
-            if self.home then self.home:refresh() end
+            if self.screen then self.screen:refresh() end
         end,
     })
+end
+
+function Shelfie:toggleShowOnStart()
+    self.settings.show_on_start = not self.settings.show_on_start
+    self:saveSettings()
 end
 
 -- Menu ----------------------------------------------------------------------
@@ -167,10 +198,7 @@ function Shelfie:addToMainMenu(menu_items)
             {
                 text = _("Show Shelfie when the library opens"),
                 checked_func = function() return self.settings.show_on_start end,
-                callback = function()
-                    self.settings.show_on_start = not self.settings.show_on_start
-                    self:saveSettings()
-                end,
+                callback = function() self:toggleShowOnStart() end,
             },
             {
                 text_func = function()
@@ -187,14 +215,26 @@ function Shelfie:addToMainMenu(menu_items)
 end
 
 function Shelfie:onCloseWidget()
-    self:closeHome()
+    self:closeScreen()
 end
 
--- Keep the stats fresh when coming back from sleep.
+-- Keep stats fresh when coming back from sleep.
 function Shelfie:onResume()
-    if self.home then
-        UIManager:scheduleIn(1, function() if self.home then self.home:refresh() end end)
+    if self.screen then
+        UIManager:scheduleIn(1, function() if self.screen then self.screen:refresh() end end)
     end
+end
+
+-- Developer hook (desktop emulator only): SHELFIE_DEV_SHOT=/path/shot.png saves
+-- a screenshot SHELFIE_DEV_DELAY seconds after startup, then quits.
+function Shelfie:devScreenshot()
+    local shot = os.getenv("SHELFIE_DEV_SHOT")
+    if not shot or shot == "" then return end
+    UIManager:scheduleIn(tonumber(os.getenv("SHELFIE_DEV_DELAY")) or 4, function()
+        local ok, err = pcall(function() require("device").screen:shot(shot) end)
+        logger.info("Shelfie: dev screenshot", ok and "saved to" or "FAILED:", ok and shot or err)
+        UIManager:quit()
+    end)
 end
 
 return Shelfie

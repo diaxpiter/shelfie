@@ -11,6 +11,7 @@ local ReadHistory = require("readhistory")
 local lfs = require("libs/libkoreader-lfs")
 local logger = require("logger")
 local util = require("util")
+local _ = require("gettext")
 
 local Data = {}
 
@@ -172,8 +173,9 @@ function Data.finishedThisYear()
     return count
 end
 
---- The newest book files under the home folder (by file date), max depth 2.
-function Data.recentlyAdded(limit, exclude_file)
+--- Every book file under the home folder (max depth 3), newest file first.
+-- Returns a list of { file = path, mtime = seconds }.
+function Data.scanBooks()
     local home = G_reader_settings:readSetting("home_dir")
     if not home or lfs.attributes(home, "mode") ~= "directory" then return {} end
     local found = {}
@@ -182,9 +184,9 @@ function Data.recentlyAdded(limit, exclude_file)
             if name ~= "." and name ~= ".." and not name:match("^%.") and not name:match("%.sdr$") then
                 local path = dir .. "/" .. name
                 local attr = lfs.attributes(path)
-                if attr and attr.mode == "directory" and depth < 2 then
+                if attr and attr.mode == "directory" and depth < 3 then
                     scan(path, depth + 1)
-                elseif attr and attr.mode == "file" and path ~= exclude_file
+                elseif attr and attr.mode == "file"
                     and DocumentRegistry:hasProvider(path) and not name:match("%.sh$")
                     and not name:match("%.txt$") then
                     found[#found + 1] = { file = path, mtime = attr.modification }
@@ -194,11 +196,137 @@ function Data.recentlyAdded(limit, exclude_file)
     end
     pcall(scan, home, 1)
     table.sort(found, function(a, b) return a.mtime > b.mtime end)
+    return found
+end
+
+--- The newest book files under the home folder (by file date).
+function Data.recentlyAdded(limit, exclude_file)
     local books = {}
-    for i = 1, math.min(limit, #found) do
-        books[i] = Data.bookMeta(found[i].file, true)
+    for _, f in ipairs(Data.scanBooks()) do
+        if f.file ~= exclude_file then
+            books[#books + 1] = Data.bookMeta(f.file, true)
+            if #books >= limit then break end
+        end
     end
     return books
+end
+
+--- All books with metadata (no covers), for the library screen.
+-- `filter`: "all" | "reading" | "new" | "complete". Also returns counts per filter.
+function Data.library(filter)
+    local all, counts = {}, { all = 0, reading = 0, new = 0, complete = 0 }
+    for _, f in ipairs(Data.scanBooks()) do
+        local meta = Data.bookMeta(f.file, false)
+        local status = meta.status
+        if status == "abandoned" then status = "reading" end
+        meta.group = status
+        counts.all = counts.all + 1
+        counts[status] = (counts[status] or 0) + 1
+        if filter == "all" or filter == status then
+            all[#all + 1] = meta
+        end
+    end
+    return all, counts
+end
+
+-- Collections (KOReader's "Tags"/favorites) --------------------------------
+
+local function readCollections()
+    local ok, ReadCollection = pcall(require, "readcollection")
+    if not ok then return end
+    pcall(ReadCollection._read, ReadCollection)
+    return ReadCollection
+end
+
+function Data.collectionTitle(name)
+    local rc = readCollections()
+    if rc and name == rc.default_collection_name then return _("Favorites") end
+    return name
+end
+
+--- All collections: { name, title, count, files (first few, for covers) }.
+function Data.collections()
+    local rc = readCollections()
+    if not rc or not rc.coll then return {} end
+    local list = {}
+    for name, coll in pairs(rc.coll) do
+        local items = {}
+        for _, item in pairs(coll) do items[#items + 1] = item end
+        table.sort(items, function(a, b) return (a.order or 0) < (b.order or 0) end)
+        local files = {}
+        for i = 1, math.min(3, #items) do files[i] = items[i].file end
+        list[#list + 1] = {
+            name = name,
+            title = Data.collectionTitle(name),
+            count = #items,
+            files = files,
+            order = (rc.coll_settings[name] or {}).order or 999,
+        }
+    end
+    table.sort(list, function(a, b)
+        if a.order ~= b.order then return a.order < b.order end
+        return a.title:lower() < b.title:lower()
+    end)
+    return list
+end
+
+--- Books of one collection, with metadata (no covers), in collection order.
+function Data.collectionBooks(name)
+    local rc = readCollections()
+    local coll = rc and rc.coll and rc.coll[name]
+    if not coll then return {} end
+    local items = {}
+    for _, item in pairs(coll) do items[#items + 1] = item end
+    table.sort(items, function(a, b) return (a.order or 0) < (b.order or 0) end)
+    local books = {}
+    for _, item in ipairs(items) do
+        if lfs.attributes(item.file, "mode") == "file" then
+            local meta = Data.bookMeta(item.file, false)
+            meta.group = meta.status == "abandoned" and "reading" or meta.status
+            books[#books + 1] = meta
+        end
+    end
+    return books
+end
+
+-- Statistics page ------------------------------------------------------------
+
+--- Minutes read on each of the last 7 days (oldest first), plus totals.
+function Data.statsSummary()
+    local s = {
+        week = {}, week_total = 0, month_min = 0,
+        total_min = 0, total_pages = 0, books_started = 0,
+        available = false,
+    }
+    local today = startOfToday()
+    for i = 6, 0, -1 do
+        local day = today - i * 86400
+        s.week[#s.week + 1] = { day = day, label = os.date("%a", day):sub(1, 2), minutes = 0 }
+    end
+    local conn = openStatsDb()
+    if not conn then return s end
+    local ok, err = pcall(function()
+        for _, d in ipairs(s.week) do
+            local secs = conn:rowexec(string.format(
+                "SELECT sum(duration) FROM page_stat_data WHERE start_time >= %d AND start_time < %d",
+                d.day, d.day + 86400))
+            d.minutes = math.floor((tonumber(secs) or 0) / 60)
+            s.week_total = s.week_total + d.minutes
+        end
+        local t = os.date("*t")
+        local month_start = os.time{ year = t.year, month = t.month, day = 1, hour = 0 }
+        local msecs = conn:rowexec(string.format(
+            "SELECT sum(duration) FROM page_stat_data WHERE start_time >= %d", month_start))
+        s.month_min = math.floor((tonumber(msecs) or 0) / 60)
+        local total, pages = conn:rowexec("SELECT sum(duration), count(*) FROM page_stat_data")
+        s.total_min = math.floor((tonumber(total) or 0) / 60)
+        s.total_pages = tonumber(pages) or 0
+        s.books_started = tonumber(conn:rowexec("SELECT count(*) FROM book")) or 0
+        s.available = true
+    end)
+    conn:close()
+    if not ok then logger.warn("Shelfie: stats summary failed:", err) end
+    return s
 end
 
 --- Ask the cover browser to index books whose covers aren't cached yet.

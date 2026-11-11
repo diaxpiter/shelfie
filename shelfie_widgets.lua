@@ -108,6 +108,7 @@ end
 --[[ Tappable: wraps any widget and calls `callback` when it is tapped. ]]
 W.Tappable = InputContainer:extend{
     callback = nil,
+    hold_callback = nil, -- optional long-press action
 }
 
 function W.Tappable:init()
@@ -117,6 +118,16 @@ function W.Tappable:init()
             GestureRange:new{ ges = "tap", range = function() return self.touch_dimen end },
         },
     }
+    if self.hold_callback then
+        self.ges_events.HoldShelfie = {
+            GestureRange:new{ ges = "hold", range = function() return self.touch_dimen end },
+        }
+    end
+end
+
+function W.Tappable:onHoldShelfie()
+    if self.hold_callback then self.hold_callback() end
+    return true
 end
 
 function W.Tappable:paintTo(bb, x, y)
@@ -249,7 +260,8 @@ function W.PatternCover:paintTo(bb, x, y)
             end
         end
     end
-    -- White title label at the bottom.
+    -- White title label at the bottom (none for untitled decorative covers).
+    if self.title == "" then return end
     local pad = W.px(6)
     local ls = self.label:getSize()
     local lx, ly = x + pad, y + h - pad - ls.h - 2 * pad
@@ -292,6 +304,108 @@ end
 
 function W.CoverImage:free()
     if self.scaled then self.scaled:free(); self.scaled = nil end
+end
+
+--[[ Switch: an on/off toggle (drawing only; wrap it in a Tappable). ]]
+W.Switch = Widget:extend{ on = false }
+
+function W.Switch:init()
+    self.dimen = Geom:new{ w = W.px(46), h = W.px(26) }
+end
+
+function W.Switch:getSize() return self.dimen end
+
+function W.Switch:paintTo(bb, x, y)
+    local w, h = self.dimen.w, self.dimen.h
+    local r = math.floor(h / 2)
+    local b = math.max(1, W.px(2))
+    bb:paintRoundedRect(x, y, w, h, W.BLACK, r)
+    if not self.on then
+        bb:paintRoundedRect(x + b, y + b, w - 2 * b, h - 2 * b, W.WHITE, r - b)
+    end
+    local knob = r - 2 * b
+    local cx = self.on and (x + w - r) or (x + r)
+    bb:paintCircle(cx, y + r, knob, self.on and W.WHITE or W.BLACK)
+end
+
+--[[ BarChart: minutes per day, with an optional goal line. ]]
+W.BarChart = Widget:extend{
+    width = 300,      -- device px
+    height = 120,     -- device px (bars area, labels added below/above)
+    days = nil,       -- { { label = "Mo", minutes = 12 }, ... }
+    goal = nil,       -- minutes
+}
+
+function W.BarChart:init()
+    self.label_h = W.px(18)
+    self.value_h = W.px(16)
+    self.dimen = Geom:new{ w = self.width, h = self.height + self.label_h + self.value_h }
+    self.labels, self.values = {}, {}
+    for i, d in ipairs(self.days) do
+        self.labels[i] = W.text(d.label, W.FONT_SANS_BOLD, 11, { color = W.MUTED })
+        self.values[i] = d.minutes > 0 and W.text(tostring(d.minutes), W.FONT_SANS_BOLD, 11) or nil
+    end
+end
+
+function W.BarChart:getSize() return self.dimen end
+
+function W.BarChart:paintTo(bb, x, y)
+    local n = #self.days
+    local maxv = self.goal or 1
+    for _, d in ipairs(self.days) do maxv = math.max(maxv, d.minutes) end
+    local slot = self.width / n
+    local bw = math.floor(slot * 0.56)
+    local base = y + self.value_h + self.height
+    for i, d in ipairs(self.days) do
+        local cx = x + math.floor(slot * (i - 0.5))
+        local bh = math.floor(self.height * d.minutes / maxv)
+        local bx = cx - math.floor(bw / 2)
+        if bh > 0 then
+            local is_today = (i == n)
+            bb:paintRoundedRect(bx, base - bh, bw, bh, W.BLACK, math.min(W.px(6), math.floor(bw / 2)))
+            if not is_today and bh > 2 * W.px(2) then -- past days: outlined
+                local b = math.max(1, W.px(2))
+                bb:paintRoundedRect(bx + b, base - bh + b, bw - 2 * b, bh - 2 * b, W.TRACK,
+                    math.max(0, math.min(W.px(6), math.floor(bw / 2)) - b))
+            end
+            local v = self.values[i]
+            if v then
+                local vs = v:getSize()
+                v:paintTo(bb, cx - math.floor(vs.w / 2), base - bh - vs.h)
+            end
+        else
+            bb:paintRect(bx, base - math.max(1, W.px(2)), bw, math.max(1, W.px(2)), W.TRACK)
+        end
+        local l = self.labels[i]
+        local ls = l:getSize()
+        l:paintTo(bb, cx - math.floor(ls.w / 2), base + W.px(4))
+    end
+    -- Goal line: dashed.
+    if self.goal and self.goal > 0 then
+        local gy = base - math.floor(self.height * self.goal / maxv)
+        local dash = W.px(6)
+        for xx = x, x + self.width - dash, 2 * dash do
+            bb:paintRect(xx, gy, dash, math.max(1, W.px(1.5)), W.MUTED)
+        end
+    end
+end
+
+function W.BarChart:free()
+    for _, w in pairs(self.labels or {}) do w:free() end
+    for _, w in pairs(self.values or {}) do w:free() end
+end
+
+--[[ Rule: a horizontal divider line. ]]
+W.Rule = Widget:extend{ width = 100, color = nil }
+
+function W.Rule:init()
+    self.dimen = Geom:new{ w = self.width, h = math.max(1, W.px(1)) }
+end
+
+function W.Rule:getSize() return self.dimen end
+
+function W.Rule:paintTo(bb, x, y)
+    bb:paintRect(x, y, self.width, self.dimen.h, self.color or W.TRACK)
 end
 
 --- A cover widget for a book: the real cover when cached, else a pattern.
