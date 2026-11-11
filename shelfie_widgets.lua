@@ -25,10 +25,47 @@ W.MUTED = Blitbuffer.Color8(0x44)
 W.GREY = Blitbuffer.Color8(0x9A)
 W.DARK = Blitbuffer.Color8(0x2A)
 
+-- Fallbacks (bundled with KOReader); replaced by our own fonts in setupFonts().
 W.FONT_SANS = "NotoSans-Regular.ttf"
 W.FONT_SANS_BOLD = "NotoSans-Bold.ttf"
 W.FONT_SERIF = "NotoSerif-Regular.ttf"
 W.FONT_SERIF_BOLD = "NotoSerif-Bold.ttf"
+
+-- Path of `to` relative to directory `from` (both absolute, already resolved).
+local function relpath(from, to)
+    local a, b = {}, {}
+    for part in from:gmatch("[^/]+") do a[#a + 1] = part end
+    for part in to:gmatch("[^/]+") do b[#b + 1] = part end
+    local i = 1
+    while a[i] and b[i] and a[i] == b[i] do i = i + 1 end
+    local out = {}
+    for _ = i, #a do out[#out + 1] = ".." end
+    for j = i, #b do out[#out + 1] = b[j] end
+    return table.concat(out, "/")
+end
+
+--- Use the fonts shipped in the plugin's fonts/ folder.
+-- KOReader opens fonts as "<fontdir>/<name>", so we hand it a path relative
+-- to its font directory; this works wherever the plugin is installed.
+function W.setupFonts(plugin_path)
+    local ffiutil = require("ffi/util")
+    local FontList = require("fontlist")
+    local fontdir = ffiutil.realpath(FontList.fontdir)
+    local root = ffiutil.realpath(plugin_path)
+    if not fontdir or not root then return end
+    local function pick(file, fallback)
+        local abs = root .. "/fonts/" .. file
+        local f = io.open(abs, "rb")
+        if not f then return fallback end
+        f:close()
+        local rel = relpath(fontdir, abs)
+        return Font:getFace(rel, 12) and rel or fallback
+    end
+    W.FONT_SANS = pick("AtkinsonHyperlegible-Regular.ttf", W.FONT_SANS)
+    W.FONT_SANS_BOLD = pick("AtkinsonHyperlegible-Bold.ttf", W.FONT_SANS_BOLD)
+    W.FONT_SERIF = pick("Literata-Regular.ttf", W.FONT_SERIF)
+    W.FONT_SERIF_BOLD = pick("Literata-Bold.ttf", W.FONT_SERIF_BOLD)
+end
 
 --- Mockup pixels (540 px wide design) -> device pixels.
 function W.px(n)
@@ -101,7 +138,7 @@ end
 --[[ Ring: a circular progress indicator with the percentage in the middle. ]]
 W.Ring = Widget:extend{
     size = 78,       -- mockup px
-    thickness = 9,   -- mockup px
+    thickness = 6,   -- mockup px
     percent = 0,     -- 0..1
 }
 
@@ -123,9 +160,10 @@ function W.Ring:paintTo(bb, x, y)
     bb:paintCircle(cx, cy, r, W.TRACK, self.t)
     -- Progress arc: stamp filled dots along the arc, from 12 o'clock clockwise.
     local mid = r - self.t / 2
-    local dot = math.floor(self.t / 2)
+    local dot = math.max(1, math.floor(self.t / 2))
     local sweep = 2 * math.pi * math.max(0, math.min(1, self.percent))
-    local steps = math.max(1, math.floor(mid * sweep / math.max(1, dot / 2)))
+    -- One stamp per pixel of arc length: a smooth stroke with round caps.
+    local steps = math.max(1, math.ceil(mid * sweep))
     for i = 0, steps do
         local a = -math.pi / 2 + sweep * i / steps
         bb:paintCircle(math.floor(cx + mid * math.cos(a) + 0.5),

@@ -39,7 +39,8 @@ end
 function Data.bookMeta(file, want_cover)
     local meta = { file = file }
     local _, filename = util.splitFilePathName(file)
-    meta.title = filename:gsub("%.[^.]+$", ""):gsub("_[A-Z0-9]+$", "")
+    -- From the filename: drop extension and Amazon/Calibre ID suffixes, tidy separators.
+    meta.title = filename:gsub("%.[^.]+$", ""):gsub("_[A-Z0-9]+$", ""):gsub("_", " ")
 
     if DocSettings:hasSidecarFile(file) then
         local ds = DocSettings:open(file)

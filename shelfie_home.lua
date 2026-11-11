@@ -37,6 +37,10 @@ local Home = InputContainer:extend{
 
 function Home:init()
     self.dimen = Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() }
+    if not W.fonts_ready then
+        pcall(W.setupFonts, self.plugin.path)
+        W.fonts_ready = true
+    end
     if Device:hasKeys() then
         self.key_events.Close = { { Device.input.group.Back } }
     end
@@ -73,7 +77,9 @@ function Home:build()
     local current = Data.currentBook()
     local stats = Data.readingStats()
     local finished = Data.finishedThisYear()
-    local recent = Data.recentlyAdded(4, current and current.file)
+    local recent = Data.recentlyAdded(12, current and current.file)
+    -- The tab bar is built first: its height decides how many cover rows fit.
+    self[2] = self:buildNav()
     self.current = current
 
     local content = VerticalGroup:new{ align = "left" }
@@ -220,18 +226,56 @@ function Home:build()
         })
         table.insert(content, vspan(8))
         local rgap = px(10)
-        local bw = math.floor((cw - 3 * rgap) / 4)
-        local bh = math.floor(bw * 1.5)
-        local row = HorizontalGroup:new{ align = "top" }
-        for i, book in ipairs(recent) do
-            if i > 1 then table.insert(row, HorizontalSpan:new{ width = rgap }) end
-            table.insert(row, W.Tappable:new{
-                callback = function() plugin:openBook(book.file) end,
-                W.cover(book, bw, bh, i),
-            })
+        -- Pick the grid (3-6 columns, 1+ rows) whose covers fill the space
+        -- above the tab bar best. Small screens get fewer, bigger covers.
+        local avail = self.dimen.h - self[2]:getSize().h - px(8) - px(14)
+        -- Measure the column so far. VerticalGroup caches its layout on the first
+        -- getSize(), so drop the cache again: we're still adding children.
+        local used = content:getSize().h
+        content._size = nil
+        local space = avail - used
+        local best
+        for cols = 3, 6 do
+            local bw = math.floor((cw - (cols - 1) * rgap) / cols)
+            local bh = math.floor(bw * 1.5)
+            local rows = math.floor((space + rgap) / (bh + rgap))
+            if rows < 1 then -- shrink to the available height
+                bh = space
+                bw = math.floor(bh / 1.5)
+                rows = 1
+            end
+            rows = math.min(rows, math.ceil(#recent / cols))
+            local n = math.min(#recent, rows * cols)
+            local score = n * bw * bh
+            if bw >= px(70) and (not best or score > best.score) then
+                best = { cols = cols, rows = rows, bw = bw, bh = bh, score = score }
+            end
         end
-        table.insert(content, row)
-        self.cover_size = { w = bw, h = bh }
+        best = best or { cols = 4, rows = 1, bw = math.floor((cw - 3 * rgap) / 4) }
+        best.bh = best.bh or math.floor(best.bw * 1.5)
+        local col_gap = best.cols > 1
+            and math.floor((cw - best.cols * best.bw) / (best.cols - 1)) or 0
+        local shown = 0
+        for r = 1, best.rows do
+            local first = (r - 1) * best.cols + 1
+            if first > #recent then break end
+            if r > 1 then table.insert(content, VerticalSpan:new{ width = rgap }) end
+            local row = HorizontalGroup:new{ align = "top" }
+            for i = first, math.min(first + best.cols - 1, #recent) do
+                local book = recent[i]
+                if i > first then table.insert(row, HorizontalSpan:new{ width = col_gap }) end
+                table.insert(row, W.Tappable:new{
+                    callback = function() plugin:openBook(book.file) end,
+                    W.cover(book, best.bw, best.bh, i),
+                })
+                shown = i
+            end
+            table.insert(content, row)
+        end
+        -- Release cover bitmaps of books that didn't fit.
+        for i = shown + 1, #recent do
+            if recent[i].cover_bb then recent[i].cover_bb:free(); recent[i].cover_bb = nil end
+        end
     end
 
     -- Start background cover indexing for anything not cached yet.
@@ -243,7 +287,6 @@ function Home:build()
     end
 
     self[1] = HorizontalGroup:new{ HorizontalSpan:new{ width = margin }, content }
-    self[2] = self:buildNav()
 end
 
 function Home:buildNav()
